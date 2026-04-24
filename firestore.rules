@@ -1,0 +1,105 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 0. Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Phase 3: Primitive Definition
+    function isSignedIn() { return request.auth != null; }
+    function isEmailVerified() { return isSignedIn() && request.auth.token.email_verified == true; }
+    function isAdmin() { return isSignedIn() && exists(/databases/$(database)/documents/admins/$(request.auth.uid)); }
+    function isValidId(id) { return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); }
+    function incoming() { return request.resource.data; }
+    function existing() { return resource.data; }
+
+    // --- Validation Helpers (Pillar 2) ---
+
+    function isValidUser(data) {
+      return data.keys().hasAll(['name', 'email', 'role', 'photoURL', 'createdAt']) &&
+             data.keys().size() == 5 &&
+             data.name is string && data.name.size() <= 100 &&
+             data.email is string && data.email.size() <= 100 &&
+             data.role in ['admin', 'member'] &&
+             data.photoURL is string && data.photoURL.size() <= 500;
+    }
+
+    function isValidTransaction(data) {
+      return data.keys().hasAll(['amount', 'category', 'description', 'userId', 'userName', 'date', 'type']) &&
+             data.keys().size() >= 7 &&
+             data.amount is number && data.amount > 0 &&
+             data.category is string && data.category.size() <= 50 &&
+             data.description is string && data.description.size() <= 500 &&
+             data.userId == request.auth.uid &&
+             data.type in ['income', 'expense'];
+    }
+
+    function isValidGrocery(data) {
+      return data.keys().hasAll(['name', 'quantity', 'unit', 'category', 'status']) &&
+             data.name is string && data.name.size() > 0 && data.name.size() <= 100 &&
+             data.quantity is number &&
+             data.unit is string && data.unit.size() <= 20 &&
+             data.status in ['pending', 'purchased'];
+    }
+
+    function isValidReimbursement(data) {
+      return data.keys().hasAll(['amount', 'description', 'userId', 'userName', 'date', 'status']) &&
+             data.amount is number && data.amount > 0 &&
+             data.description is string && data.description.size() <= 1000 &&
+             data.userId == request.auth.uid &&
+             data.status == 'pending';
+    }
+
+    // --- Collection Matches ---
+
+    match /admins/{userId} {
+      allow get: if isSignedIn() && isValidId(userId);
+      allow list: if false;
+    }
+
+    match /users/{userId} {
+      allow get: if isSignedIn() && isValidId(userId);
+      allow list: if isAdmin();
+      allow create: if isSignedIn() && request.auth.uid == userId && isValidUser(incoming()) && incoming().role == 'member';
+      allow update: if isSignedIn() && isValidId(userId) && (
+        (request.auth.uid == userId && incoming().diff(existing()).affectedKeys().hasOnly(['name', 'photoURL']) && incoming().name is string) ||
+        isAdmin()
+      );
+    }
+
+    match /transactions/{transactionId} {
+      allow get: if isSignedIn() && isValidId(transactionId);
+      allow list: if isSignedIn();
+      allow create: if isSignedIn() && isValidTransaction(incoming());
+      allow update, delete: if isAdmin();
+    }
+
+    match /groceries/{groceryId} {
+      allow get: if isSignedIn() && isValidId(groceryId);
+      allow list: if isSignedIn();
+      allow create: if isSignedIn() && isValidGrocery(incoming());
+      allow update: if isSignedIn() && isValidId(groceryId) && (
+        (incoming().diff(existing()).affectedKeys().hasOnly(['status'])) ||
+        isAdmin()
+      );
+      allow delete: if isAdmin();
+    }
+
+    match /reimbursements/{reimbursementId} {
+      allow get: if isSignedIn() && isValidId(reimbursementId);
+      allow list: if isSignedIn();
+      allow create: if isSignedIn() && isValidReimbursement(incoming());
+      allow update: if isSignedIn() && isValidId(reimbursementId) && (
+        (isAdmin() && incoming().diff(existing()).affectedKeys().hasOnly(['status'])) ||
+        (request.auth.uid == existing().userId && existing().status == 'pending' && incoming().diff(existing()).affectedKeys().hasOnly(['amount', 'description']))
+      );
+      allow delete: if isAdmin() || (request.auth.uid == existing().userId && existing().status == 'pending');
+    }
+
+    match /metadata/wallet {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn(); 
+    }
+  }
+}

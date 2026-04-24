@@ -1,0 +1,86 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "App user profile information",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "email": { "type": "string" },
+        "role": { "type": "string", "enum": ["admin", "member", "view-only"] },
+        "photoURL": { "type": "string" }
+      },
+      "required": ["name", "email", "role"]
+    },
+    "Transaction": {
+      "title": "Transaction",
+      "description": "Household fund expense or income",
+      "type": "object",
+      "properties": {
+        "amount": { "type": "number" },
+        "category": { "type": "string" },
+        "description": { "type": "string" },
+        "userId": { "type": "string" },
+        "userName": { "type": "string" },
+        "date": { "type": "string", "format": "date-time" },
+        "type": { "type": "string", "enum": ["income", "expense"] }
+      },
+      "required": ["amount", "category", "userId", "date", "type"]
+    },
+    "Grocery": {
+      "title": "Grocery",
+      "description": "Grocery item in inventory",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "quantity": { "type": "number" },
+        "unit": { "type": "string" },
+        "category": { "type": "string" },
+        "status": { "type": "string", "enum": ["purchased", "pending"] },
+        "lastUpdated": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "status"]
+    },
+    "Reimbursement": {
+      "title": "Reimbursement",
+      "description": "Personal expense for reimbursement",
+      "type": "object",
+      "properties": {
+        "amount": { "type": "number" },
+        "description": { "type": "string" },
+        "userId": { "type": "string" },
+        "userName": { "type": "string" },
+        "date": { "type": "string", "format": "date-time" },
+        "status": { "type": "string", "enum": ["pending", "reimbursed"] }
+      },
+      "required": ["amount", "userId", "date", "status"]
+    }
+  },
+  "firestore": {
+    "users/{userId}": {
+      "schema": "User",
+      "description": "User profiles"
+    },
+    "transactions/{transactionId}": {
+      "schema": "Transaction",
+      "description": "Household fund history"
+    },
+    "groceries/{groceryId}": {
+      "schema": "Grocery",
+      "description": "Grocery inventory list"
+    },
+    "reimbursements/{reimbursementId}": {
+      "schema": "Reimbursement",
+      "description": "Personal reimbursements"
+    },
+    "metadata/wallet": {
+      "schema": {
+        "type": "object",
+        "properties": {
+          "balance": { "type": "number" }
+        }
+      },
+      "description": "Global wallet balance"
+    }
+  }
+}
