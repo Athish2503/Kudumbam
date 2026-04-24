@@ -9,97 +9,128 @@ service cloud.firestore {
     // Phase 3: Primitive Definition
     function isSignedIn() { return request.auth != null; }
     function isEmailVerified() { return isSignedIn() && request.auth.token.email_verified == true; }
-    function isAdmin() { return isSignedIn() && exists(/databases/$(database)/documents/admins/$(request.auth.uid)); }
+    
+    // Check if user is admin based on the 'users' collection role
+    function isAdmin() { 
+      return isSignedIn() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+    
     function isValidId(id) { return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); }
     function incoming() { return request.resource.data; }
     function existing() { return resource.data; }
 
-    // --- Validation Helpers (Pillar 2) ---
+    // --- Validation Helpers ---
 
     function isValidUser(data) {
-      return data.keys().hasAll(['name', 'email', 'role', 'photoURL', 'createdAt']) &&
-             data.keys().size() == 5 &&
-             data.name is string && data.name.size() <= 100 &&
-             data.email is string && data.email.size() <= 100 &&
-             data.role in ['admin', 'member'] &&
-             data.photoURL is string && data.photoURL.size() <= 500;
+      return data.keys().hasAll(['name', 'email', 'role', 'photoURL', 'createdAt', 'displayName']) &&
+             data.role in ['admin', 'member'];
     }
 
     function isValidTransaction(data) {
       return data.keys().hasAll(['amount', 'category', 'description', 'userId', 'userName', 'date', 'type']) &&
-             data.keys().size() >= 7 &&
              data.amount is number && data.amount > 0 &&
-             data.category is string && data.category.size() <= 50 &&
-             data.description is string && data.description.size() <= 500 &&
              data.userId == request.auth.uid &&
              data.type in ['income', 'expense'];
     }
 
     function isValidGrocery(data) {
-      return data.keys().hasAll(['name', 'quantity', 'unit', 'category', 'status']) &&
-             data.name is string && data.name.size() > 0 && data.name.size() <= 100 &&
-             data.quantity is number &&
-             data.unit is string && data.unit.size() <= 20 &&
+      return data.keys().hasAll(['name', 'status']) &&
+             data.name is string && data.name.size() > 0 &&
              data.status in ['pending', 'purchased'];
     }
 
     function isValidReimbursement(data) {
       return data.keys().hasAll(['amount', 'description', 'userId', 'userName', 'date', 'status']) &&
              data.amount is number && data.amount > 0 &&
-             data.description is string && data.description.size() <= 1000 &&
-             data.userId == request.auth.uid &&
-             data.status == 'pending';
+             data.status in ['pending', 'approved', 'rejected'];
     }
 
     // --- Collection Matches ---
 
-    match /admins/{userId} {
-      allow get: if isSignedIn() && isValidId(userId);
-      allow list: if false;
-    }
-
     match /users/{userId} {
       allow get: if isSignedIn() && isValidId(userId);
-      allow list: if isAdmin();
-      allow create: if isSignedIn() && request.auth.uid == userId && isValidUser(incoming()) && incoming().role == 'member';
-      allow update: if isSignedIn() && isValidId(userId) && (
-        (request.auth.uid == userId && incoming().diff(existing()).affectedKeys().hasOnly(['name', 'photoURL']) && incoming().name is string) ||
-        isAdmin()
-      );
+      allow list: if isSignedIn(); // Allow listing users for assignment dropdowns
+      allow create: if isSignedIn() && request.auth.uid == userId;
+      allow update: if isSignedIn() && (request.auth.uid == userId || isAdmin());
     }
 
     match /transactions/{transactionId} {
-      allow get: if isSignedIn() && isValidId(transactionId);
-      allow list: if isSignedIn();
-      allow create: if isSignedIn() && isValidTransaction(incoming());
+      allow get, list: if isSignedIn();
+      allow create: if isSignedIn();
       allow update, delete: if isAdmin();
     }
 
     match /groceries/{groceryId} {
-      allow get: if isSignedIn() && isValidId(groceryId);
-      allow list: if isSignedIn();
-      allow create: if isSignedIn() && isValidGrocery(incoming());
-      allow update: if isSignedIn() && isValidId(groceryId) && (
-        (incoming().diff(existing()).affectedKeys().hasOnly(['status'])) ||
-        isAdmin()
-      );
+      allow get, list: if isSignedIn();
+      allow create: if isSignedIn();
+      allow update: if isSignedIn();
       allow delete: if isAdmin();
     }
 
     match /reimbursements/{reimbursementId} {
-      allow get: if isSignedIn() && isValidId(reimbursementId);
-      allow list: if isSignedIn();
-      allow create: if isSignedIn() && isValidReimbursement(incoming());
-      allow update: if isSignedIn() && isValidId(reimbursementId) && (
-        (isAdmin() && incoming().diff(existing()).affectedKeys().hasOnly(['status'])) ||
-        (request.auth.uid == existing().userId && existing().status == 'pending' && incoming().diff(existing()).affectedKeys().hasOnly(['amount', 'description']))
-      );
+      allow get, list: if isSignedIn();
+      allow create: if isSignedIn();
+      allow update: if isSignedIn();
       allow delete: if isAdmin() || (request.auth.uid == existing().userId && existing().status == 'pending');
     }
 
+    match /tasks/{taskId} {
+      allow get, list: if isSignedIn();
+      allow create: if isSignedIn();
+      allow update: if isSignedIn();
+      allow delete: if isAdmin();
+    }
+
+    match /events/{eventId} {
+      allow get, list: if isSignedIn();
+      allow create: if isSignedIn();
+      allow update: if isSignedIn();
+      allow delete: if isAdmin();
+    }
+
+    match /health_logs/{logId} {
+      allow get, list: if isSignedIn();
+      allow create: if isSignedIn();
+      allow update: if isSignedIn();
+      allow delete: if isAdmin();
+    }
+
+    match /maintenance/{logId} {
+      allow get, list: if isSignedIn();
+      allow create: if isSignedIn();
+      allow update: if isSignedIn();
+      allow delete: if isAdmin();
+    }
+
+    match /relatives/{id} {
+      allow get, list: if isSignedIn();
+      allow create, update: if isSignedIn();
+      allow delete: if isAdmin();
+    }
+
+    match /dining/{id} {
+      allow get, list: if isSignedIn();
+      allow create, update: if isSignedIn();
+      allow delete: if isAdmin();
+    }
+
+    match /notifications/{id} {
+      allow get, list: if isSignedIn();
+      allow create, update: if isSignedIn();
+      allow delete: if isAdmin();
+    }
+
     match /metadata/wallet {
+      allow read, write: if isSignedIn();
+    }
+
+    match /metadata/utilities {
+      allow read, write: if isSignedIn();
+    }
+
+    match /metadata/dashboard {
       allow read: if isSignedIn();
-      allow write: if isSignedIn(); 
+      allow write: if isAdmin();
     }
   }
 }

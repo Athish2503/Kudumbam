@@ -1,31 +1,37 @@
 import { GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
 import { auth, db } from '../lib/firebase';
+import { useToast } from '../context/ToastContext';
 import { doc, setDoc, getDoc } from 'firebase/firestore';
 import { motion } from 'motion/react';
 import { LogIn } from 'lucide-react';
 
 export default function Login() {
+  const { showToast } = useToast();
+  
   const handleLogin = async () => {
     try {
       const provider = new GoogleAuthProvider();
       const result = await signInWithPopup(auth, provider);
-      
       const user = result.user;
-      const userDocRef = doc(db, 'users', user.uid);
-      const userDoc = await getDoc(userDocRef);
 
+      // Ensure user exists in Firestore
+      const userRef = doc(db, 'users', user.uid);
+      const userDoc = await getDoc(userRef);
+      
       if (!userDoc.exists()) {
-        await setDoc(userDocRef, {
-          name: user.displayName,
+        await setDoc(userRef, {
+          displayName: user.displayName,
+          nickname: user.displayName, // Initialize nickname with displayName
           email: user.email,
-          role: 'member', // Default role
           photoURL: user.photoURL,
+          role: 'member',
           createdAt: new Date().toISOString()
         });
       }
+      showToast("Welcome back!");
     } catch (error) {
       console.error("Login failed", error);
-      alert("Login failed. Please check your internet connection.");
+      showToast("Login failed. Please check your internet connection.", "error");
     }
   };
 

@@ -12,6 +12,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { useAuth } from '../App';
+import { sendNotification } from '../components/NotificationManager';
 import { 
   Plus, 
   Search, 
@@ -25,23 +26,30 @@ import {
   ShoppingCart,
   MoreVertical,
   X,
-  Wallet
+  Wallet,
+  Heart,
+  User as UserIcon,
+  Banknote
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { useToast } from '../context/ToastContext';
 
 const CATEGORIES = [
   { id: 'groceries', label: 'Groceries', icon: ShoppingCart },
   { id: 'utilities', label: 'Utilities', icon: UtilityPole },
   { id: 'rent_housing', label: 'Housing', icon: Building },
-  { id: 'misc', label: 'Misc', icon: ReceiptText },
+  { id: 'contribution', label: 'Top-up', icon: Heart },
+  { id: 'personal', label: 'Personal', icon: UserIcon },
+  { id: 'misc', label: 'Misc', icon: Banknote },
 ];
 
 export default function Funds() {
-  const { user, role } = useAuth();
+  const { user, role, userData } = useAuth();
   const [transactions, setTransactions] = useState<any[]>([]);
   const [balance, setBalance] = useState(0);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const { showToast } = useToast();
   
   // Form State
   const [amount, setAmount] = useState('');
@@ -93,7 +101,7 @@ export default function Funds() {
           category,
           description,
           userId: user?.uid,
-          userName: user?.displayName,
+          userName: userData?.nickname || user?.displayName || 'Unknown',
           date: new Date().toISOString(),
           type
         });
@@ -102,9 +110,14 @@ export default function Funds() {
       setIsModalOpen(false);
       setAmount('');
       setDescription('');
+      showToast("Transaction recorded successfully!");
+      
+      const authorName = (userData?.nickname || user?.displayName || 'Someone');
+      const action = type === 'income' ? 'added a top-up' : 'recorded an expense';
+      sendNotification(user?.uid || '', authorName, `${action} of ₹${numAmount}: ${description}`);
     } catch (error) {
       console.error("Transaction failed", error);
-      alert("Failed to add transaction. Check your permissions.");
+      showToast("Failed to add transaction. Check your permissions.", "error");
     }
   };
 
@@ -112,9 +125,9 @@ export default function Funds() {
     <div className="space-y-16">
       <header className="flex flex-col md:flex-row md:items-end justify-between gap-6">
         <div>
-          <p className="text-[11px] uppercase tracking-[0.3em] font-bold opacity-40 mb-2">Financial Ledger</p>
+          <p className="text-[11px] uppercase tracking-[0.3em] font-bold opacity-40 mb-2">Money Tracker</p>
           <h1 className="text-5xl font-serif italic font-black leading-none tracking-tighter text-[#1A1A1A]">
-            Master Registry.
+            Family Budget.
           </h1>
         </div>
         <button 
@@ -129,15 +142,15 @@ export default function Funds() {
       <section className="bg-white/40 backdrop-blur rounded-[40px] border border-[#2D2926]/5 p-12 text-center relative overflow-hidden">
         <div className="absolute top-0 left-1/2 -translate-x-1/2 w-px h-12 bg-[#2D2926]/10"></div>
         <div className="pt-8">
-           <p className="text-[10px] uppercase tracking-[0.4em] font-bold text-[#2D2926]/40 mb-6">Available Resources</p>
-           <div className="text-8xl font-serif italic tracking-tighter text-[#1A1A1A] mb-4">
-             ₹{balance.toLocaleString('en-IN')}
-           </div>
-           <p className="text-xs uppercase tracking-[0.2em] font-bold opacity-30 italic">Current Treasury Balance</p>
+            <p className="text-[10px] uppercase tracking-[0.4em] font-bold text-[#2D2926]/40 mb-6">Total Cash on Hand</p>
+            <div className="text-8xl font-serif italic tracking-tighter text-[#1A1A1A] mb-4">
+              ₹{balance.toLocaleString('en-IN')}
+            </div>
+            <p className="text-xs uppercase tracking-[0.2em] font-bold opacity-30 italic">Current Family Balance</p>
         </div>
         <div className="mt-12 pt-8 border-t border-[#2D2926]/5 flex items-center justify-center gap-2">
-           <span className="w-1.5 h-1.5 rounded-full bg-[#27AE60]"></span>
-           <span className="text-[9px] uppercase tracking-widest font-bold opacity-40">Synced to Cloud Hub</span>
+            <span className="w-1.5 h-1.5 rounded-full bg-[#27AE60]"></span>
+            <span className="text-[9px] uppercase tracking-widest font-bold opacity-40">Synced with Cloud</span>
         </div>
       </section>
 
@@ -160,12 +173,15 @@ export default function Funds() {
                     <div className={`w-14 h-14 rounded-full border border-[#2D2926]/10 flex items-center justify-center text-[#2D2926]/40 transition-all ${
                       tx.type === 'income' ? 'group-hover:bg-[#27AE60] group-hover:text-white group-hover:border-transparent' : 'group-hover:bg-[#2D2926] group-hover:text-white'
                     }`}>
-                      {tx.type === 'income' ? <ArrowUpRight size={20} /> : <ReceiptText size={20} />}
+                      {(() => {
+                        const Icon = CATEGORIES.find(c => c.id === tx.category)?.icon || (tx.type === 'income' ? ArrowUpRight : ReceiptText);
+                        return <Icon size={20} />;
+                      })()}
                     </div>
                     <div>
                       <p className="text-base font-bold tracking-tight text-[#1A1A1A]">{tx.description || tx.category}</p>
                       <p className="text-[10px] uppercase tracking-widest font-bold opacity-30 mt-1 italic">
-                        {tx.userName} • {tx.category} • {new Date(tx.date).toLocaleDateString('en-IN')}
+                        {tx.userName} • {CATEGORIES.find(c => c.id === tx.category)?.label || tx.category} • {new Date(tx.date).toLocaleDateString('en-IN')}
                       </p>
                     </div>
                   </div>
@@ -179,7 +195,7 @@ export default function Funds() {
             </div>
           ) : (
             <div className="py-24 text-center border-2 border-dashed border-[#2D2926]/10 rounded-[40px]">
-              <p className="text-[10px] uppercase tracking-widest font-bold opacity-30">No treasury movements recorded</p>
+              <p className="text-[10px] uppercase tracking-widest font-bold opacity-30">No transactions recorded yet</p>
             </div>
           )}
         </div>
@@ -200,7 +216,7 @@ export default function Funds() {
               initial={{ opacity: 0, scale: 0.95, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              className="w-full max-w-xl bg-[#FDFBF7] border border-[#2D2926]/10 rounded-[40px] shadow-2xl overflow-hidden relative z-10"
+              className="w-[calc(100%-2rem)] max-w-[400px] bg-[#FDFBF7] border border-[#2D2926]/10 rounded-[40px] shadow-2xl overflow-hidden relative z-[100] max-h-[85vh] overflow-y-auto scrollbar-hide"
             >
               <div className="p-10 space-y-10">
                 <header className="flex justify-between items-start">
@@ -228,7 +244,7 @@ export default function Funds() {
                       onClick={() => setType('income')}
                       className={`flex-1 py-3 text-[10px] uppercase tracking-widest font-bold rounded-full transition-all ${type === 'income' ? 'bg-[#2D2926] text-[#FDFBF7]' : 'text-[#2D2926]/40 hover:text-[#2D2926]'}`}
                     >
-                      Income
+                      Top-up (Inflow)
                     </button>
                   </div>
 
@@ -284,7 +300,7 @@ export default function Funds() {
                     type="submit"
                     className="w-full py-5 bg-[#2D2926] text-[#FDFBF7] text-xs uppercase tracking-[0.3em] font-bold rounded-full hover:scale-[1.02] active:scale-95 transition-all shadow-xl shadow-[#2D2926]/10"
                   >
-                    Commit to Ledger
+                    Save Transaction
                   </button>
                 </form>
               </div>
