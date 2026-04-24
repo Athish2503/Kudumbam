@@ -1,37 +1,41 @@
-import { GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
+import { GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult } from 'firebase/auth';
 import { auth, db } from '../lib/firebase';
 import { useToast } from '../context/ToastContext';
 import { doc, setDoc, getDoc } from 'firebase/firestore';
 import { motion } from 'motion/react';
 import { LogIn } from 'lucide-react';
+import { useEffect } from 'react';
+import { Capacitor } from '@capacitor/core';
 
 export default function Login() {
   const { showToast } = useToast();
+
+  const syncUser = async (user: any) => {
+    const userRef = doc(db, 'users', user.uid);
+    const userDoc = await getDoc(userRef);
+    if (!userDoc.exists()) {
+      await setDoc(userRef, {
+        displayName: user.displayName,
+        nickname: user.displayName,
+        email: user.email,
+        photoURL: user.photoURL,
+        role: 'member',
+        createdAt: new Date().toISOString()
+      });
+    }
+  };
   
   const handleLogin = async () => {
     try {
       const provider = new GoogleAuthProvider();
       const result = await signInWithPopup(auth, provider);
-      const user = result.user;
-
-      // Ensure user exists in Firestore
-      const userRef = doc(db, 'users', user.uid);
-      const userDoc = await getDoc(userRef);
-      
-      if (!userDoc.exists()) {
-        await setDoc(userRef, {
-          displayName: user.displayName,
-          nickname: user.displayName, // Initialize nickname with displayName
-          email: user.email,
-          photoURL: user.photoURL,
-          role: 'member',
-          createdAt: new Date().toISOString()
-        });
-      }
+      await syncUser(result.user);
       showToast("Welcome back!");
-    } catch (error) {
+    } catch (error: any) {
       console.error("Login failed", error);
-      showToast("Login failed. Please check your internet connection.", "error");
+      // Show the actual error message so we can diagnose it
+      const errMsg = error.message || "Unknown error";
+      showToast(`Login failed: ${errMsg}`, "error");
     }
   };
 

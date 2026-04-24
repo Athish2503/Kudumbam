@@ -1,21 +1,29 @@
 import { initializeApp } from 'firebase/app';
-import { getAuth } from 'firebase/auth';
+import { 
+  getAuth, 
+  indexedDBLocalPersistence, 
+  initializeAuth, 
+  browserLocalPersistence 
+} from 'firebase/auth';
 import { getFirestore, doc, getDocFromServer } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
+import { Capacitor } from '@capacitor/core';
 
 const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
 export const auth = getAuth(app);
 export const isFirebaseConfigured = !!firebaseConfig.apiKey;
 
-// Connectivity validation as per instructions
+// Connectivity validation
 async function testConnection() {
   try {
+    if (Capacitor.isNativePlatform()) {
+      const { setPersistence, indexedDBLocalPersistence } = await import('firebase/auth');
+      await setPersistence(auth, indexedDBLocalPersistence);
+    }
     await getDocFromServer(doc(db, 'test', 'connection'));
   } catch (error) {
-    if (error instanceof Error && error.message.includes('the client is offline')) {
-      console.error("Please check your Firebase configuration.");
-    }
+    // Silently handle connectivity issues
   }
 }
 testConnection();

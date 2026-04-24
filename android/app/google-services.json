@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "133820929761",
+    "project_id": "ai-studio-applet-webapp-123f8",
+    "storage_bucket": "ai-studio-applet-webapp-123f8.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:133820929761:android:5ee01da7be7cec5a9849a0",
+        "android_client_info": {
+          "package_name": "com.kudumbam.app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "133820929761-o88cmm00o33uc0l0updmmo0lf57bkbpm.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCyKv-0ZVak9xhT2knV3ZECaAxf725H71o"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "133820929761-o88cmm00o33uc0l0updmmo0lf57bkbpm.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
