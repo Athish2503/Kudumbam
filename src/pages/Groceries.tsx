@@ -29,7 +29,8 @@ import {
   ChefHat,
   Zap,
   Square,
-  CheckSquare
+  CheckSquare,
+  Settings
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useToast } from '../context/ToastContext';
@@ -60,6 +61,7 @@ export default function Groceries() {
   const [newItemUnit, setNewItemUnit] = useState('kg');
   const { showToast } = useToast();
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [editingItem, setEditingItem] = useState<any | null>(null);
 
   useEffect(() => {
     const q = query(collection(db, 'groceries'), orderBy('name', 'asc'));
@@ -93,21 +95,40 @@ export default function Groceries() {
     if (!newItemName) return;
 
     try {
-      await addDoc(collection(db, 'groceries'), {
+      const itemData = {
         name: newItemName,
         category: newItemCategory,
         currentStock: parseFloat(newItemStock),
         minStock: parseFloat(newItemMin),
         unit: newItemUnit,
         lastUpdated: new Date().toISOString()
-      });
+      };
+
+      if (editingItem) {
+        await updateDoc(doc(db, 'groceries', editingItem.id), itemData);
+        showToast(`${newItemName} updated`, 'success');
+      } else {
+        await addDoc(collection(db, 'groceries'), itemData);
+        showToast(`${newItemName} added to pantry`, 'success');
+      }
+      
       setNewItemName('');
       setIsAdding(false);
-      showToast(`${newItemName} added to pantry`, 'success');
+      setEditingItem(null);
     } catch (error) {
-      console.error("Error adding item", error);
-      showToast("Failed to add item", "error");
+      console.error("Error saving item", error);
+      showToast("Failed to save item", "error");
     }
+  };
+
+  const startEditing = (item: any) => {
+    setEditingItem(item);
+    setNewItemName(item.name);
+    setNewItemCategory(item.category);
+    setNewItemStock(item.currentStock.toString());
+    setNewItemMin(item.minStock.toString());
+    setNewItemUnit(item.unit);
+    setIsAdding(true);
   };
 
   const updateStock = async (id: string, newStock: number) => {
@@ -258,7 +279,7 @@ export default function Groceries() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              onClick={() => setIsAdding(false)}
+              onClick={() => { setIsAdding(false); setEditingItem(null); }}
               className="absolute inset-0 bg-[#2D2926]/80 backdrop-blur-sm"
             />
             <motion.div 
@@ -269,8 +290,8 @@ export default function Groceries() {
             >
               <div className="p-8 space-y-8">
                 <div className="flex justify-between items-center">
-                   <h2 className="text-2xl font-serif italic text-[#1A1A1A]">New Item</h2>
-                   <button onClick={() => setIsAdding(false)} className="text-[#2D2926]/20"><X /></button>
+                   <h2 className="text-2xl font-serif italic text-[#1A1A1A]">{editingItem ? 'Edit Provision' : 'New Item'}</h2>
+                   <button onClick={() => { setIsAdding(false); setEditingItem(null); }} className="text-[#2D2926]/20"><X /></button>
                 </div>
 
                 <form onSubmit={handleAddItem} className="space-y-8">
@@ -331,7 +352,7 @@ export default function Groceries() {
                   </div>
 
                   <button type="submit" className="w-full py-5 bg-[#2D2926] text-white rounded-full font-black text-[10px] uppercase tracking-[0.2em] shadow-xl">
-                    Register Item
+                    {editingItem ? 'Save Changes' : 'Register Item'}
                   </button>
                 </form>
               </div>
@@ -349,7 +370,7 @@ export default function Groceries() {
                 <h2 className="text-[10px] uppercase tracking-[0.2em] font-black text-rose-600">Depleted</h2>
              </div>
              <div className="space-y-4">
-                {outOfStockItems.map(item => <PantryItem key={item.id} item={item} onUpdate={updateStock} onDelete={() => setDeleteId(item.id)} />)}
+                {outOfStockItems.map(item => <PantryItem key={item.id} item={item} onUpdate={updateStock} onDelete={() => setDeleteId(item.id)} onEdit={() => startEditing(item)} />)}
              </div>
           </section>
         )}
@@ -361,7 +382,7 @@ export default function Groceries() {
                 <h2 className="text-[10px] uppercase tracking-[0.2em] font-black text-orange-600">Running Low</h2>
              </div>
              <div className="space-y-4">
-                {lowStockItems.map(item => <PantryItem key={item.id} item={item} onUpdate={updateStock} onDelete={() => setDeleteId(item.id)} />)}
+                {lowStockItems.map(item => <PantryItem key={item.id} item={item} onUpdate={updateStock} onDelete={() => setDeleteId(item.id)} onEdit={() => startEditing(item)} />)}
              </div>
           </section>
         )}
@@ -372,7 +393,7 @@ export default function Groceries() {
               <h2 className="text-[10px] uppercase tracking-[0.2em] font-black text-emerald-600">Available</h2>
            </div>
            <div className="space-y-4">
-              {healthyItems.map(item => <PantryItem key={item.id} item={item} onUpdate={updateStock} onDelete={() => setDeleteId(item.id)} />)}
+              {healthyItems.map(item => <PantryItem key={item.id} item={item} onUpdate={updateStock} onDelete={() => setDeleteId(item.id)} onEdit={() => startEditing(item)} />)}
            </div>
            {items.length === 0 && !loading && (
              <div className="py-20 text-center bg-white rounded-[40px] border border-dashed border-[#2D2926]/10">
@@ -394,7 +415,7 @@ export default function Groceries() {
   );
 }
 
-function PantryItem({ item, onUpdate, onDelete }: { item: any, onUpdate: any, onDelete: any }) {
+function PantryItem({ item, onUpdate, onDelete, onEdit }: { item: any, onUpdate: any, onDelete: any, onEdit: any }) {
   const category = CATEGORIES.find(c => c.id === item.category);
   const isOut = item.currentStock === 0;
   const isLow = item.currentStock > 0 && item.currentStock <= item.minStock;
@@ -417,9 +438,14 @@ function PantryItem({ item, onUpdate, onDelete }: { item: any, onUpdate: any, on
                 <p className="text-[9px] uppercase tracking-widest font-black text-[#A67C52] opacity-40">{category?.label || 'General'}</p>
              </div>
           </div>
-          <button onClick={onDelete} className="p-2 text-rose-500/20 hover:text-rose-500 transition-all opacity-0 group-hover:opacity-100">
-             <X size={18} />
-          </button>
+          <div className="flex gap-1">
+             <button onClick={onEdit} className="p-2 text-[#2D2926]/10 hover:text-[#2D2926] transition-all opacity-0 group-hover:opacity-100">
+                <Settings size={18} />
+             </button>
+             <button onClick={onDelete} className="p-2 text-rose-500/20 hover:text-rose-500 transition-all opacity-0 group-hover:opacity-100">
+                <X size={18} />
+             </button>
+          </div>
        </div>
 
        <div className="space-y-4">

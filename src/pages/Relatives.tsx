@@ -22,7 +22,8 @@ import {
   X,
   MessageCircle,
   MoreVertical,
-  UserPlus as UserPlusIcon
+  UserPlus as UserPlusIcon,
+  Settings
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useToast } from '../context/ToastContext';
@@ -48,6 +49,7 @@ export default function Relatives() {
   const [notes, setNotes] = useState('');
   const { showToast } = useToast();
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [editingRelative, setEditingRelative] = useState<any | null>(null);
 
   useEffect(() => {
     const q = query(collection(db, 'relatives'), orderBy('name', 'asc'));
@@ -95,24 +97,43 @@ export default function Relatives() {
     if (!name) return;
 
     try {
-      await addDoc(collection(db, 'relatives'), {
+      const relativeData = {
         name,
         relationship,
         birthday,
         phone,
         notes,
         lastUpdated: new Date().toISOString()
-      });
+      };
+
+      if (editingRelative) {
+        await updateDoc(doc(db, 'relatives', editingRelative.id), relativeData);
+        showToast("Relative updated!");
+      } else {
+        await addDoc(collection(db, 'relatives'), relativeData);
+        showToast("Sondham added to directory!");
+      }
+
       setName('');
       setBirthday('');
       setPhone('');
       setNotes('');
       setIsAdding(false);
-      showToast("Sondham added to directory!");
+      setEditingRelative(null);
     } catch (error) {
-      console.error("Error adding relative", error);
-      showToast("Failed to add relative", "error");
+      console.error("Error saving relative", error);
+      showToast("Failed to save relative", "error");
     }
+  };
+
+  const startEditing = (rel: any) => {
+    setEditingRelative(rel);
+    setName(rel.name);
+    setRelationship(rel.relationship);
+    setBirthday(rel.birthday || '');
+    setPhone(rel.phone || '');
+    setNotes(rel.notes || '');
+    setIsAdding(true);
   };
 
   const deleteRelative = async () => {
@@ -235,7 +256,7 @@ export default function Relatives() {
                 type="submit"
                 className="w-full py-5 bg-[#2D2926] text-[#FDFBF7] text-xs uppercase tracking-[0.3em] font-bold rounded-full hover:scale-[1.02] active:scale-95 transition-all shadow-xl shadow-[#2D2926]/10 flex items-center justify-center gap-3"
               >
-                Save Sondham <ArrowRight size={16} />
+                {editingRelative ? 'Save Changes' : 'Save Sondham'} <ArrowRight size={16} />
               </button>
             </form>
           </motion.div>
@@ -286,7 +307,7 @@ export default function Relatives() {
                  </div>
               </div>
 
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-1">
                  {rel.phone && (
                    <a 
                      href={`https://wa.me/${rel.phone.replace(/[^0-9]/g, '')}`} 
@@ -297,6 +318,12 @@ export default function Relatives() {
                       <MessageCircle size={18} />
                    </a>
                  )}
+                 <button 
+                  onClick={() => startEditing(rel)}
+                  className="w-10 h-10 rounded-full text-[#2D2926]/10 hover:text-[#2D2926] transition-all opacity-0 group-hover:opacity-100"
+                 >
+                    <Settings size={18} />
+                 </button>
                  <button 
                   onClick={() => setDeleteId(rel.id)}
                   className="w-10 h-10 rounded-full text-[#2D2926]/10 hover:text-red-500 transition-all opacity-0 group-hover:opacity-100"

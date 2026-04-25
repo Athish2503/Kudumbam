@@ -15,7 +15,8 @@ import {
   Menu,
   Settings,
   Utensils,
-  Zap
+  Zap,
+  Shirt
 } from 'lucide-react';
 import { auth } from '../lib/firebase';
 import { useAuth } from '../App';
@@ -33,6 +34,7 @@ export default function Layout({ children }: LayoutProps) {
     { to: '/tasks', icon: CheckSquare, label: 'Chores' },
     { to: '/funds', icon: Wallet, label: 'Budget' },
     { to: '/groceries', icon: ShoppingCart, label: 'Pantry' },
+    { to: '/laundry', icon: Shirt, label: 'Laundry' },
     { to: '/calendar', icon: Calendar, label: 'Events' },
     { to: '/relatives', icon: Users, label: 'Sondham' },
     { to: '/dining', icon: Utensils, label: 'Dining' },

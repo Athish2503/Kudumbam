@@ -1,8 +1,5 @@
 import { 
   GoogleAuthProvider, 
-  signInWithPopup, 
-  signInWithRedirect, 
-  getRedirectResult,
   signInWithCredential
 } from 'firebase/auth';
 import { auth, db } from '../lib/firebase';
@@ -17,31 +14,7 @@ export default function Login() {
   const { showToast } = useToast();
   const [isAuthenticating, setIsAuthenticating] = useState(false);
 
-  // Handle redirect result (Standard for web and fallback for mobile)
-  useEffect(() => {
-    const checkRedirect = async () => {
-      try {
-        // Only show loading if we are actually processing a redirect result
-        const result = await getRedirectResult(auth);
-        if (result) {
-          setIsAuthenticating(true);
-          await syncUser(result.user);
-          showToast("Welcome back!");
-        }
-      } catch (error: any) {
-        console.error("Redirect login failed", error);
-        // Clean up common cancelled errors
-        if (error.code === 'auth/popup-closed-by-user' || error.code === 'auth/cancelled-popup-request') {
-          return;
-        }
-        showToast(`Authentication issue: ${error.message}`, "error");
-      } finally {
-        setIsAuthenticating(false);
-      }
-    };
-
-    checkRedirect();
-  }, []);
+  // Handle login completion logic is now simpler as we focus on native
 
   const syncUser = async (user: any) => {
     const userRef = doc(db, 'users', user.uid);
@@ -67,28 +40,41 @@ export default function Login() {
       
       if (Capacitor.isNativePlatform()) {
         // --- NATIVE AUTH FLOW (Best for Mobile Apps) ---
-        const result = await FirebaseAuthentication.signInWithGoogle();
-        
-        if (result.credential?.idToken) {
-          const credential = GoogleAuthProvider.credential(result.credential.idToken);
-          const userCredential = await signInWithCredential(auth, credential);
-          await syncUser(userCredential.user);
-          showToast("Welcome back!");
-        } else {
-          // If native auth is cancelled or fails without token
+        try {
+          const result = await FirebaseAuthentication.signInWithGoogle();
+          
+          if (result.credential?.idToken) {
+            const credential = GoogleAuthProvider.credential(result.credential.idToken);
+            const userCredential = await signInWithCredential(auth, credential);
+            await syncUser(userCredential.user);
+            showToast("Welcome back!");
+          } else {
+            setIsAuthenticating(false);
+          }
+        } catch (error: any) {
+          console.error("Native Login Error:", error);
+          
+          // Handle specific Credential Manager / Play Services errors
+          if (error.message?.includes("credential Manager") || error.message?.includes("7012")) {
+            showToast("Device support issue: Please ensure Google Play Services is updated.", "error");
+          } else if (error.code === 'auth/popup-closed-by-user' || error.code === 'auth/cancelled-popup-request') {
+            // Ignore cancellations
+          } else {
+            showToast(`Login failed: ${error.message || "Unknown error"}`, "error");
+          }
           setIsAuthenticating(false);
         }
       } else {
-        // --- REDIRECT AUTH FLOW (Best for Web & Mobile Browsers) ---
-        // We use Redirect instead of Popup to avoid "Auth Cancelled/Popup Closed" errors
-        await signInWithRedirect(auth, provider);
-        // Execution stops here as the page redirects
+        // --- WEB AUTH FLOW (For Browsers) ---
+        const { signInWithPopup } = await import('firebase/auth');
+        const result = await signInWithPopup(auth, provider);
+        await syncUser(result.user);
+        showToast("Welcome back!");
       }
     } catch (error: any) {
       console.error("Login failed", error);
       setIsAuthenticating(false);
       
-      // Ignore cancellations
       if (error.code === 'auth/popup-closed-by-user' || error.code === 'auth/cancelled-popup-request') {
         return;
       }

@@ -8,7 +8,8 @@ import {
   doc, 
   updateDoc, 
   increment,
-  runTransaction
+  runTransaction,
+  deleteDoc
 } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { useAuth } from '../App';
@@ -121,6 +122,50 @@ export default function Funds() {
     }
   };
 
+  const handleDelete = async (tx: any) => {
+    if (!window.confirm("Delete this transaction? This will also update the balance.")) return;
+
+    try {
+      await runTransaction(db, async (transaction) => {
+        const walletRef = doc(db, 'metadata', 'wallet');
+        const walletDoc = await transaction.get(walletRef);
+        
+        const multiplier = tx.type === 'expense' ? -1 : 1;
+        const correction = tx.amount * multiplier * -1; // Reverse the transaction
+
+        if (walletDoc.exists()) {
+          const newBalance = (walletDoc.data().balance || 0) + correction;
+          transaction.update(walletRef, { balance: newBalance });
+        }
+
+        transaction.delete(doc(db, 'transactions', tx.id));
+      });
+      showToast("Transaction deleted");
+    } catch (error) {
+      showToast("Delete failed", "error");
+    }
+  };
+
+  const recalibrateBalance = async () => {
+    try {
+      showToast("Recalibrating...");
+      const q = query(collection(db, 'transactions'));
+      const snapshot = await getDocs(q);
+      
+      let newBalance = 0;
+      snapshot.docs.forEach(doc => {
+        const tx = doc.data();
+        const multiplier = tx.type === 'expense' ? -1 : 1;
+        newBalance += (tx.amount * multiplier);
+      });
+
+      await setDoc(doc(db, 'metadata', 'wallet'), { balance: newBalance }, { merge: true });
+      showToast(`Recalibrated! Balance is now ₹${newBalance}`);
+    } catch (error) {
+      showToast("Recalibration failed", "error");
+    }
+  };
+
   return (
     <div className="space-y-16">
       <header className="flex flex-col md:flex-row md:items-end justify-between gap-6">
@@ -148,9 +193,17 @@ export default function Funds() {
             </div>
             <p className="text-xs uppercase tracking-[0.2em] font-bold opacity-30 italic">Current Family Balance</p>
         </div>
-        <div className="mt-12 pt-8 border-t border-[#2D2926]/5 flex items-center justify-center gap-2">
-            <span className="w-1.5 h-1.5 rounded-full bg-[#27AE60]"></span>
-            <span className="text-[9px] uppercase tracking-widest font-bold opacity-40">Synced with Cloud</span>
+        <div className="mt-12 pt-8 border-t border-[#2D2926]/5 flex items-center justify-center gap-6">
+            <div className="flex items-center gap-2">
+               <span className="w-1.5 h-1.5 rounded-full bg-[#27AE60]"></span>
+               <span className="text-[9px] uppercase tracking-widest font-bold opacity-40">Synced</span>
+            </div>
+            <button 
+              onClick={recalibrateBalance}
+              className="text-[9px] uppercase tracking-widest font-black text-[#A67C52] hover:underline"
+            >
+              Recalibrate
+            </button>
         </div>
       </section>
 
@@ -185,10 +238,15 @@ export default function Funds() {
                       </p>
                     </div>
                   </div>
-                  <div className="text-right">
-                    <p className={`text-lg font-serif italic ${tx.type === 'income' ? 'text-[#27AE60]' : 'text-[#1A1A1A]'}`}>
-                      {tx.type === 'income' ? '+' : '-'}₹{tx.amount.toLocaleString('en-IN')}
-                    </p>
+                  <div className="flex items-center gap-4">
+                    <div className="text-right">
+                      <p className={`text-lg font-serif italic ${tx.type === 'income' ? 'text-[#27AE60]' : 'text-[#1A1A1A]'}`}>
+                        {tx.type === 'income' ? '+' : '-'}₹{tx.amount.toLocaleString('en-IN')}
+                      </p>
+                    </div>
+                    <button onClick={() => handleDelete(tx)} className="p-2 text-rose-500/10 hover:text-rose-500 transition-colors">
+                       <X size={16} />
+                    </button>
                   </div>
                 </div>
               ))}

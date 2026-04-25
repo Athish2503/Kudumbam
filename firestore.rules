@@ -57,7 +57,11 @@ service cloud.firestore {
     match /transactions/{transactionId} {
       allow get, list: if isSignedIn();
       allow create: if isSignedIn();
-      allow update, delete: if isAdmin();
+      allow update, delete: if isSignedIn();
+    }
+
+    match /laundry_batches/{id} {
+      allow read, write: if isSignedIn();
     }
 
     match /groceries/{groceryId} {
@@ -68,42 +72,33 @@ service cloud.firestore {
     match /reimbursements/{reimbursementId} {
       allow get, list: if isSignedIn();
       allow create: if isSignedIn();
-      allow update: if isSignedIn() && (isAdmin() || request.auth.uid == existing().assignedToId);
-      allow delete: if isAdmin() || (request.auth.uid == existing().userId && existing().status == 'pending');
+      allow update: if isSignedIn();
+      allow delete: if isSignedIn();
     }
 
     match /tasks/{taskId} {
       allow get, list: if isSignedIn();
-      allow create: if isSignedIn();
-      allow update: if isSignedIn();
-      allow delete: if isAdmin();
+      allow create, update, delete: if isSignedIn();
     }
 
     match /events/{eventId} {
       allow get, list: if isSignedIn();
-      allow create: if isSignedIn();
-      allow update: if isSignedIn();
-      allow delete: if isAdmin();
+      allow create, update, delete: if isSignedIn();
     }
 
     match /health_logs/{logId} {
       allow get, list: if isSignedIn();
-      allow create: if isSignedIn();
-      allow update: if isSignedIn();
-      allow delete: if isAdmin();
+      allow create, update, delete: if isSignedIn();
     }
 
     match /maintenance/{logId} {
       allow get, list: if isSignedIn();
-      allow create: if isSignedIn();
-      allow update: if isSignedIn();
-      allow delete: if isAdmin();
+      allow create, update, delete: if isSignedIn();
     }
 
     match /relatives/{id} {
       allow get, list: if isSignedIn();
-      allow create, update: if isSignedIn();
-      allow delete: if isAdmin();
+      allow create, update, delete: if isSignedIn();
     }
 
     match /dining/{id} {
@@ -114,7 +109,7 @@ service cloud.firestore {
     match /notifications/{id} {
       allow get, list: if isSignedIn();
       allow create, update: if isSignedIn();
-      allow delete: if isAdmin();
+      allow delete: if isSignedIn();
     }
 
     match /metadata/wallet {
@@ -127,7 +122,7 @@ service cloud.firestore {
 
     match /metadata/dashboard {
       allow read: if isSignedIn();
-      allow write: if isAdmin();
+      allow write: if isSignedIn();
     }
 
     match /milk_log/{id} {

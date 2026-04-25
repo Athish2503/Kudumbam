@@ -17,6 +17,7 @@ import Login from './pages/Login';
 import Relatives from './pages/Relatives';
 import Dining from './pages/Dining';
 import Utilities from './pages/Utilities';
+import Laundry from './pages/Laundry';
 import SetupWarning from './components/SetupWarning';
 import { ToastProvider } from './context/ToastContext';
 import NotificationManager from './components/NotificationManager';
@@ -139,6 +140,10 @@ export default function App() {
             <Route
               path="/utilities"
               element={user ? <Layout><Utilities /></Layout> : <Navigate to="/login" />}
+            />
+            <Route
+              path="/laundry"
+              element={user ? <Layout><Laundry /></Layout> : <Navigate to="/login" />}
             />
           </Routes>
         </Router>

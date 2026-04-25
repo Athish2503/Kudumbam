@@ -23,7 +23,8 @@ import {
   RefreshCcw,
   ArrowRight,
   X,
-  AlertCircle
+  AlertCircle,
+  Settings
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useToast } from '../context/ToastContext';
@@ -51,6 +52,7 @@ export default function Tasks() {
   const [assignedTo, setAssignedTo] = useState('All');
   const { showToast } = useToast();
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [editingTask, setEditingTask] = useState<any | null>(null);
 
   useEffect(() => {
     const q = query(collection(db, 'tasks'), orderBy('status', 'asc'), orderBy('dueDate', 'asc'));
@@ -73,27 +75,47 @@ export default function Tasks() {
     if (!title) return;
 
     try {
-      await addDoc(collection(db, 'tasks'), {
+      const taskData = {
         title,
         description,
         recurrence,
         dueDate: dueDate || new Date().toISOString().split('T')[0],
         assignedTo,
-        status: 'pending',
-        createdBy: user?.displayName || 'Unknown',
         lastUpdated: new Date().toISOString()
-      });
+      };
+
+      if (editingTask) {
+        await updateDoc(doc(db, 'tasks', editingTask.id), taskData);
+        showToast("Task updated!");
+      } else {
+        await addDoc(collection(db, 'tasks'), {
+          ...taskData,
+          status: 'pending',
+          createdBy: user?.displayName || 'Unknown',
+        });
+        showToast("Task added successfully!");
+        const authorName = (useAuth().userData?.nickname || user?.displayName || 'Someone');
+        sendNotification(user?.uid || '', authorName, `Added a new task: ${title}`);
+      }
+
       setTitle('');
       setDescription('');
       setIsAdding(false);
-      showToast("Task added successfully!");
-      
-      const authorName = (useAuth().userData?.nickname || user?.displayName || 'Someone');
-      sendNotification(user?.uid || '', authorName, `Added a new task: ${title}`);
+      setEditingTask(null);
     } catch (error) {
-      console.error("Error adding task", error);
-      showToast("Failed to add task", "error");
+      console.error("Error saving task", error);
+      showToast("Failed to save task", "error");
     }
+  };
+
+  const startEditing = (task: any) => {
+    setEditingTask(task);
+    setTitle(task.title);
+    setDescription(task.description || '');
+    setRecurrence(task.recurrence);
+    setDueDate(task.dueDate);
+    setAssignedTo(task.assignedTo);
+    setIsAdding(true);
   };
 
   const toggleStatus = async (task: any) => {
@@ -220,7 +242,7 @@ export default function Tasks() {
                 type="submit"
                 className="w-full py-5 bg-[#2D2926] text-[#FDFBF7] text-xs uppercase tracking-[0.3em] font-bold rounded-full hover:scale-[1.02] active:scale-95 transition-all shadow-xl shadow-[#2D2926]/10 flex items-center justify-center gap-3"
               >
-                Add Task <ArrowRight size={16} />
+                {editingTask ? 'Save Changes' : 'Add Task'} <ArrowRight size={16} />
               </button>
             </form>
           </motion.div>
@@ -253,6 +275,9 @@ export default function Tasks() {
                     </button>
                     <div className="flex items-center gap-2">
                        {task.recurrence !== 'none' && <RefreshCcw size={14} className="text-[#2D2926]/20" />}
+                       <button onClick={() => startEditing(task)} className="opacity-0 group-hover:opacity-100 transition-all text-[#2D2926]/10 hover:text-[#2D2926]">
+                          <Settings size={16} />
+                       </button>
                        <button onClick={() => setDeleteId(task.id)} className="opacity-0 group-hover:opacity-100 transition-all text-[#2D2926]/10 hover:text-red-500">
                           <Trash2 size={16} />
                        </button>
