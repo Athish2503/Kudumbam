@@ -65,7 +65,6 @@ export default function Relatives() {
     }
 
     try {
-      // Note: 'birthday' is not yet standard in all browsers for this API
       const props = ['name', 'tel', 'email', 'address', 'icon', 'birthday'];
       const opts = { multiple: false };
       // @ts-ignore
@@ -76,7 +75,6 @@ export default function Relatives() {
         setName(contact.name?.[0] || '');
         setPhone(contact.tel?.[0] || '');
         
-        // Attempt to extract birthday if the browser supports it
         if (contact.birthday) {
            const bday = new Date(contact.birthday);
            if (!isNaN(bday.getTime())) {

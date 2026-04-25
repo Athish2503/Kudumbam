@@ -45,6 +45,7 @@ export default function Dining() {
   const [currentDish, setCurrentDish] = useState('');
   const [currentDishPrice, setCurrentDishPrice] = useState('');
   const [notes, setNotes] = useState('');
+  const [mapsUrl, setMapsUrl] = useState('');
   const { showToast } = useToast();
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -80,6 +81,7 @@ export default function Dining() {
       avgPrice: parseFloat(avgPrice) || 0,
       favoriteDishes,
       notes,
+      mapsUrl,
       lastVisit: new Date().toISOString()
     };
 
@@ -107,6 +109,7 @@ export default function Dining() {
     setCurrentDish('');
     setCurrentDishPrice('');
     setNotes('');
+    setMapsUrl('');
     setIsAdding(false);
     setEditingId(null);
   };
@@ -118,6 +121,7 @@ export default function Dining() {
     setAvgPrice(res.avgPrice?.toString() || '');
     setFavoriteDishes(res.favoriteDishes || []);
     setNotes(res.notes || '');
+    setMapsUrl(res.mapsUrl || '');
     setEditingId(res.id);
     setIsAdding(true);
     // Scroll to top to see the form
@@ -147,6 +151,7 @@ export default function Dining() {
     const text = `
 🍴 *Family Favourite: ${res.name}*
 📍 ${res.location}
+${res.mapsUrl ? `🔗 Maps: ${res.mapsUrl}` : ''}
 ⭐ Rating: ${res.rating}/5
 
 🥘 *Must Try Dishes:*
@@ -244,6 +249,22 @@ _Shared via Kudumbam Family OS_
                        />
                     </div>
                  </div>
+                 <div className="space-y-4">
+                    <label className="text-[10px] uppercase tracking-widest font-bold opacity-40 block">Google Maps Link</label>
+                    <div className="relative">
+                       <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-[#2D2926]/20" size={18} />
+                       <input
+                         type="url"
+                         placeholder="Paste Google Maps URL here..."
+                         value={mapsUrl}
+                         onChange={(e) => setMapsUrl(e.target.value)}
+                         className="w-full bg-white border border-[#2D2926]/10 rounded-2xl p-4 pl-12 font-bold text-xs outline-none focus:border-[#2D2926]"
+                       />
+                    </div>
+                 </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
                  <div className="space-y-4">
                     <label className="text-[10px] uppercase tracking-widest font-bold opacity-40 block">Rating</label>
                     <div className="flex gap-2">
@@ -381,7 +402,13 @@ _Shared via Kudumbam Family OS_
                     <h3 className="text-3xl font-serif italic font-bold text-[#1A1A1A] group-hover:text-emerald-600 transition-colors mb-1">{res.name}</h3>
                     <div className="flex items-center gap-2 text-[10px] uppercase tracking-widest font-black opacity-30 italic">
                        <MapPin size={12} />
-                       {res.location}
+                       {res.mapsUrl ? (
+                         <a href={res.mapsUrl} target="_blank" rel="noopener noreferrer" className="hover:text-emerald-600 transition-colors underline decoration-dotted underline-offset-4">
+                           {res.location}
+                         </a>
+                       ) : (
+                         res.location
+                       )}
                     </div>
                  </div>
 

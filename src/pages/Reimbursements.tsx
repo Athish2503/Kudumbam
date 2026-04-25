@@ -30,7 +30,7 @@ import { useToast } from '../context/ToastContext';
 import ConfirmModal from '../components/ConfirmModal';
 
 export default function Reimbursements() {
-  const { user, role } = useAuth();
+  const { user, role, userData } = useAuth();
   const [claims, setClaims] = useState<any[]>([]);
   const [familyMembers, setFamilyMembers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -41,7 +41,7 @@ export default function Reimbursements() {
   // Form State
   const [amount, setAmount] = useState('');
   const [description, setDescription] = useState('');
-  const [assignedTo, setAssignedTo] = useState('');
+  const [assignedTo, setAssignedTo] = useState({ id: '', name: '' });
   const [splits, setSplits] = useState<{ item: string; amount: string }[]>([]);
 
   useEffect(() => {
@@ -84,21 +84,22 @@ export default function Reimbursements() {
       await addDoc(collection(db, 'reimbursements'), {
         amount: parseFloat(amount),
         description,
-        assignedTo,
+        assignedToId: assignedTo.id,
+        assignedToName: assignedTo.name,
         splits: splits.filter(s => s.item && s.amount),
         userId: user?.uid,
-        userName: user?.displayName,
+        userName: userData?.nickname || user?.displayName || 'Someone',
         date: new Date().toISOString(),
         status: 'pending'
       });
       setIsModalOpen(false);
       setAmount('');
       setDescription('');
-      setAssignedTo('');
+      setAssignedTo({ id: '', name: '' });
       setSplits([]);
       showToast("Reimbursement claim created!");
       
-      const authorName = (useAuth().userData?.nickname || user?.displayName || 'Someone');
+      const authorName = (userData?.nickname || user?.displayName || 'Someone');
       sendNotification(user?.uid || '', authorName, `Created a claim for ₹${amount}: ${description}`);
     } catch (error) {
        console.error("Error submitting claim", error);
@@ -106,14 +107,19 @@ export default function Reimbursements() {
     }
   };
 
-  const updateStatus = async (id: string, newStatus: string) => {
-    if (role !== 'admin') return;
+  const updateStatus = async (claim: any, newStatus: string) => {
+    // Only the person assigned to pay OR an admin can update the status
+    if (user?.uid !== claim.assignedToId && role !== 'admin') {
+      showToast("Only the assigned member or admin can approve this.", "error");
+      return;
+    }
+
     try {
-      await updateDoc(doc(db, 'reimbursements', id), { status: newStatus });
+      await updateDoc(doc(db, 'reimbursements', claim.id), { status: newStatus });
       showToast(newStatus === 'reimbursed' ? "Claim approved and paid!" : "Status updated!");
       
       if (newStatus === 'reimbursed') {
-        const adminName = (useAuth().userData?.nickname || user?.displayName || 'Admin');
+        const adminName = (userData?.nickname || user?.displayName || 'Admin');
         sendNotification(user?.uid || '', adminName, `Paid a reimbursement claim!`);
       }
     } catch (error) {
@@ -190,7 +196,7 @@ export default function Reimbursements() {
                     <div className="min-w-0">
                        <p className="text-2xl font-serif italic tracking-tight text-[#1A1A1A] group-hover:text-[#A67C52] transition-colors">{claim.description}</p>
                        <div className="flex flex-wrap items-center gap-4 text-[10px] font-bold uppercase tracking-widest opacity-30 mt-2 italic">
-                          <span className="not-italic bg-[#2D2926] text-white px-3 py-1 rounded-full text-[8px] opacity-100">{claim.assignedTo}</span>
+                          <span className="not-italic bg-[#2D2926] text-white px-3 py-1 rounded-full text-[8px] opacity-100">{claim.assignedToName || claim.assignedTo}</span>
                           <span>By {claim.userName}</span>
                           <span>•</span>
                           <span>{new Date(claim.date).toLocaleDateString('en-IN')}</span>
@@ -201,13 +207,13 @@ export default function Reimbursements() {
                  <div className="text-right flex items-center justify-end gap-8 border-t md:border-t-0 md:border-l border-[#2D2926]/5 pt-6 md:pt-0 md:pl-8">
                     <div className="space-y-2">
                       <p className={`text-3xl font-serif italic ${claim.status === 'reimbursed' ? 'text-slate-300 line-through' : 'text-[#1A1A1A]'}`}>₹{claim.amount.toLocaleString('en-IN')}</p>
-                      {claim.status === 'pending' && role === 'admin' ? (
-                         <button 
-                          onClick={() => updateStatus(claim.id, 'reimbursed')}
-                          className="px-6 py-2 bg-[#2D2926] text-white rounded-full text-[9px] font-bold uppercase tracking-widest hover:scale-105 transition-all"
-                         >
-                           Pay Now
-                         </button>
+                       {claim.status === 'pending' && (user?.uid === claim.assignedToId || role === 'admin') ? (
+                          <button 
+                           onClick={() => updateStatus(claim, 'reimbursed')}
+                           className="px-6 py-2 bg-emerald-600 text-white rounded-full text-[9px] font-bold uppercase tracking-widest hover:scale-105 transition-all shadow-lg shadow-emerald-600/20"
+                          >
+                            Pay Now
+                          </button>
                       ) : (
                         <p className={`text-[9px] font-bold uppercase tracking-[0.3em] ${claim.status === 'reimbursed' ? 'text-emerald-500' : 'text-orange-500'} italic`}>
                            {claim.status === 'reimbursed' ? 'Paid' : 'Pending'}
@@ -269,14 +275,17 @@ export default function Reimbursements() {
                     <div className="space-y-4">
                       <label className="text-[10px] uppercase tracking-widest font-bold opacity-40 block">Assign To</label>
                       <select
-                        value={assignedTo}
-                        onChange={(e) => setAssignedTo(e.target.value)}
+                        value={assignedTo.id}
+                        onChange={(e) => {
+                          const m = familyMembers.find(member => member.id === e.target.value);
+                          setAssignedTo({ id: e.target.value, name: m?.nickname || m?.displayName || '' });
+                        }}
                         className="w-full h-[60px] px-6 rounded-2xl border border-[#2D2926]/10 bg-white font-bold text-xs uppercase tracking-widest outline-none appearance-none"
                         required
                       >
                         <option value="">Select Member</option>
                         {familyMembers.map(m => (
-                          <option key={m.id} value={m.nickname || m.displayName}>{m.nickname || m.displayName}</option>
+                          <option key={m.id} value={m.id}>{m.nickname || m.displayName}</option>
                         ))}
                       </select>
                     </div>
