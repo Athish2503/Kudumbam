@@ -14,6 +14,7 @@ import {
   Plus, 
   Trash2, 
   Utensils,
+  Search,
   Star,
   MapPin,
   Share2,
@@ -22,7 +23,8 @@ import {
   X,
   Clock,
   IndianRupee,
-  ChevronRight
+  ChevronRight,
+  Edit2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useToast } from '../context/ToastContext';
@@ -32,6 +34,7 @@ export default function Dining() {
   const [restaurants, setRestaurants] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [isAdding, setIsAdding] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
   
   // Form State
   const [name, setName] = useState('');
@@ -44,6 +47,7 @@ export default function Dining() {
   const [notes, setNotes] = useState('');
   const { showToast } = useToast();
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
 
   useEffect(() => {
     const q = query(collection(db, 'dining'), orderBy('lastVisit', 'desc'));
@@ -69,29 +73,55 @@ export default function Dining() {
     e.preventDefault();
     if (!name) return;
 
+    const restaurantData = {
+      name,
+      location,
+      rating,
+      avgPrice: parseFloat(avgPrice) || 0,
+      favoriteDishes,
+      notes,
+      lastVisit: new Date().toISOString()
+    };
+
     try {
-      await addDoc(collection(db, 'dining'), {
-        name,
-        location,
-        rating,
-        avgPrice: parseFloat(avgPrice) || 0,
-        favoriteDishes,
-        notes,
-        lastVisit: new Date().toISOString()
-      });
-      setName('');
-      setLocation('');
-      setAvgPrice('');
-      setFavoriteDishes([]);
-      setCurrentDish('');
-      setCurrentDishPrice('');
-      setNotes('');
-      setIsAdding(false);
-      showToast("Restaurant added to family list!");
+      if (editingId) {
+        await updateDoc(doc(db, 'dining', editingId), restaurantData);
+        showToast("Restaurant details updated!");
+      } else {
+        await addDoc(collection(db, 'dining'), restaurantData);
+        showToast("Restaurant added to family list!");
+      }
+      
+      resetForm();
     } catch (error) {
-      console.error("Error adding dining", error);
-      showToast("Failed to add restaurant", "error");
+      console.error("Error saving dining", error);
+      showToast(`Failed to ${editingId ? 'update' : 'add'} restaurant`, "error");
     }
+  };
+
+  const resetForm = () => {
+    setName('');
+    setLocation('');
+    setAvgPrice('');
+    setFavoriteDishes([]);
+    setCurrentDish('');
+    setCurrentDishPrice('');
+    setNotes('');
+    setIsAdding(false);
+    setEditingId(null);
+  };
+
+  const startEdit = (res: any) => {
+    setName(res.name || '');
+    setLocation(res.location || '');
+    setRating(res.rating || 5);
+    setAvgPrice(res.avgPrice?.toString() || '');
+    setFavoriteDishes(res.favoriteDishes || []);
+    setNotes(res.notes || '');
+    setEditingId(res.id);
+    setIsAdding(true);
+    // Scroll to top to see the form
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const deleteRestaurant = async () => {
@@ -105,6 +135,12 @@ export default function Dining() {
       showToast("Failed to remove restaurant", "error");
     }
   };
+
+  const filteredRestaurants = restaurants.filter(res => 
+    res.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    res.location.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    res.favoriteDishes?.some((d: any) => d.name.toLowerCase().includes(searchTerm.toLowerCase()))
+  );
 
   const shareRestaurant = (res: any) => {
     const dishList = res.favoriteDishes?.map((d: any) => `• ${d.name}${d.price ? ` (₹${d.price})` : ''}`).join('\n') || 'N/A';
@@ -132,24 +168,40 @@ _Shared via Kudumbam Family OS_
 
   return (
     <div className="space-y-16 pb-20">
-      <header className="flex flex-col md:flex-row md:items-end justify-between gap-6">
-        <div>
-          <p className="text-[11px] uppercase tracking-[0.3em] font-bold opacity-40 mb-2">Food & Dining</p>
-          <h1 className="text-5xl font-serif italic font-black leading-none tracking-tighter text-[#1A1A1A]">
-            Restaurants.
-          </h1>
+      <header className="flex flex-col gap-6">
+        <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
+          <div>
+            <p className="text-[11px] uppercase tracking-[0.3em] font-bold opacity-40 mb-2">Food & Dining</p>
+            <h1 className="text-5xl font-serif italic font-black leading-none tracking-tighter text-[#1A1A1A]">
+              Restaurants.
+            </h1>
+          </div>
+          <button 
+            onClick={() => {
+              if (isAdding) resetForm();
+              else setIsAdding(true);
+            }}
+            className={`w-fit py-3 px-8 text-[10px] uppercase tracking-widest font-bold rounded-full transition-all flex items-center gap-3 ${
+              isAdding 
+                ? 'bg-[#2D2926] text-[#FDFBF7]' 
+                : 'bg-emerald-600 text-white hover:scale-105 shadow-xl shadow-emerald-600/20'
+            }`}
+          >
+            {isAdding ? <X size={16} /> : <Plus size={16} />}
+            <span>{isAdding ? 'Close' : 'Add Favourite'}</span>
+          </button>
         </div>
-        <button 
-          onClick={() => setIsAdding(!isAdding)}
-          className={`w-fit py-3 px-8 text-[10px] uppercase tracking-widest font-bold rounded-full transition-all flex items-center gap-3 ${
-            isAdding 
-              ? 'bg-[#2D2926] text-[#FDFBF7]' 
-              : 'bg-emerald-600 text-white hover:scale-105 shadow-xl shadow-emerald-600/20'
-          }`}
-        >
-          {isAdding ? <X size={16} /> : <Plus size={16} />}
-          <span>{isAdding ? 'Close' : 'Add Favourite'}</span>
-        </button>
+
+        <div className="relative">
+           <Search size={16} className="absolute left-6 top-1/2 -translate-y-1/2 opacity-20" />
+           <input 
+            type="text" 
+            placeholder="Search restaurants, locations or dishes..." 
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full pl-14 pr-6 h-14 bg-white border border-[#2D2926]/5 rounded-full text-xs font-bold uppercase tracking-widest outline-none focus:border-[#2D2926] transition-all shadow-sm"
+           />
+        </div>
       </header>
 
       {/* Add Form */}
@@ -211,31 +263,31 @@ _Shared via Kudumbam Family OS_
 
               <div className="space-y-6">
                  <label className="text-[10px] uppercase tracking-widest font-bold opacity-40 block">Must Try Dishes Table</label>
-                 <div className="flex flex-col gap-3">
-                    <div className="flex gap-3">
-                       <input
-                         type="text"
-                         placeholder="Dish Name (e.g. Ghee Roast)"
-                         value={currentDish}
-                         onChange={(e) => setCurrentDish(e.target.value)}
-                         className="flex-[2] bg-white border border-[#2D2926]/10 rounded-2xl p-4 font-bold text-xs outline-none focus:border-[#2D2926]"
-                       />
-                       <input
-                         type="number"
-                         placeholder="Price (₹)"
-                         value={currentDishPrice}
-                         onChange={(e) => setCurrentDishPrice(e.target.value)}
-                         className="flex-1 bg-white border border-[#2D2926]/10 rounded-2xl p-4 font-bold text-xs outline-none focus:border-[#2D2926]"
-                       />
-                       <button 
-                         type="button" 
-                         onClick={addDish}
-                         className="px-6 bg-[#2D2926] text-white rounded-2xl text-[10px] font-black uppercase tracking-widest"
-                       >
-                          Add
-                       </button>
-                    </div>
-                 </div>
+                  <div className="flex flex-col gap-3">
+                     <div className="flex flex-col sm:flex-row gap-3">
+                        <input
+                          type="text"
+                          placeholder="Dish Name (e.g. Ghee Roast)"
+                          value={currentDish}
+                          onChange={(e) => setCurrentDish(e.target.value)}
+                          className="flex-[2] bg-white border border-[#2D2926]/10 rounded-2xl p-4 font-bold text-xs outline-none focus:border-[#2D2926]"
+                        />
+                        <input
+                          type="number"
+                          placeholder="Price (₹)"
+                          value={currentDishPrice}
+                          onChange={(e) => setCurrentDishPrice(e.target.value)}
+                          className="flex-1 bg-white border border-[#2D2926]/10 rounded-2xl p-4 font-bold text-xs outline-none focus:border-[#2D2926]"
+                        />
+                        <button 
+                          type="button" 
+                          onClick={addDish}
+                          className="px-6 py-4 sm:py-0 bg-[#2D2926] text-white rounded-2xl text-[10px] font-black uppercase tracking-widest min-h-[50px]"
+                        >
+                           Add
+                        </button>
+                     </div>
+                  </div>
                  
                  <div className="flex flex-wrap gap-3">
                     {favoriteDishes.map((dish, idx) => (
@@ -279,7 +331,7 @@ _Shared via Kudumbam Family OS_
                 type="submit"
                 className="w-full py-5 bg-[#2D2926] text-[#FDFBF7] text-xs uppercase tracking-[0.3em] font-bold rounded-full hover:scale-[1.02] active:scale-95 transition-all shadow-xl shadow-[#2D2926]/10 flex items-center justify-center gap-3"
               >
-                Save Favourite <ArrowRight size={16} />
+                {editingId ? 'Update Details' : 'Save Favourite'} <ArrowRight size={16} />
               </button>
             </form>
           </motion.div>
@@ -287,7 +339,7 @@ _Shared via Kudumbam Family OS_
       </AnimatePresence>
 
       <div className="grid grid-cols-1 gap-10">
-         {restaurants.map((res) => (
+         {filteredRestaurants.map((res) => (
            <motion.div 
              key={res.id}
              layout
@@ -303,12 +355,21 @@ _Shared via Kudumbam Family OS_
                     <button 
                       onClick={() => shareRestaurant(res)}
                       className="w-10 h-10 rounded-full border border-[#2D2926]/5 flex items-center justify-center text-[#2D2926]/20 hover:text-[#2D2926] hover:border-[#2D2926] transition-all"
+                      title="Share"
                     >
                        <Share2 size={16} />
                     </button>
                     <button 
+                      onClick={() => startEdit(res)}
+                      className="w-10 h-10 rounded-full border border-[#2D2926]/5 flex items-center justify-center text-[#2D2926]/20 hover:text-emerald-600 hover:border-emerald-600 transition-all"
+                      title="Edit"
+                    >
+                       <Edit2 size={16} />
+                    </button>
+                    <button 
                       onClick={() => setDeleteId(res.id)}
-                      className="w-10 h-10 rounded-full text-red-500/10 hover:text-red-500 transition-all opacity-0 group-hover:opacity-100"
+                      className="w-10 h-10 rounded-full text-red-500/20 hover:text-red-500 transition-all opacity-100 md:opacity-0 md:group-hover:opacity-100"
+                      title="Delete"
                     >
                        <Trash2 size={16} />
                     </button>
@@ -324,17 +385,17 @@ _Shared via Kudumbam Family OS_
                     </div>
                  </div>
 
-                 <div className="grid grid-cols-2 gap-8 py-6 border-y border-[#2D2926]/5">
+                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8 py-6 border-y border-[#2D2926]/5">
                     <div>
                        <p className="text-[9px] uppercase tracking-widest font-black opacity-30 mb-2">Must Try Table</p>
                        <div className="space-y-1">
                           {res.favoriteDishes?.map((dish: any, i: number) => (
-                             <p key={i} className="text-[10px] font-bold text-[#2D2926] flex items-center justify-between">
-                                <span className="flex items-center gap-2">
-                                   <span className="w-1 h-1 bg-emerald-500 rounded-full" />
+                             <p key={i} className="text-[10px] font-bold text-[#2D2926] flex items-start justify-between gap-4">
+                                <span className="flex items-center gap-2 break-words">
+                                   <span className="w-1 h-1 bg-emerald-500 rounded-full shrink-0" />
                                    {dish.name}
                                 </span>
-                                {dish.price && <span className="opacity-40 italic">₹{dish.price}</span>}
+                                {dish.price && <span className="opacity-40 italic shrink-0">₹{dish.price}</span>}
                              </p>
                           ))}
                           {(!res.favoriteDishes || res.favoriteDishes.length === 0) && <p className="text-[10px] font-bold text-[#2D2926]">N/A</p>}

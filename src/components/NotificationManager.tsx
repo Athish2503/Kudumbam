@@ -3,6 +3,8 @@ import { collection, query, orderBy, limit, onSnapshot, addDoc, serverTimestamp 
 import { db } from '../lib/firebase';
 import { useToast } from '../context/ToastContext';
 import { useAuth } from '../App';
+import { Capacitor } from '@capacitor/core';
+import { LocalNotifications } from '@capacitor/local-notifications';
 
 export default function NotificationManager() {
   const { user } = useAuth();
@@ -13,15 +15,29 @@ export default function NotificationManager() {
   );
 
   useEffect(() => {
-    if ('Notification' in window) {
-      setPermission(Notification.permission);
-    }
+    const checkPermission = async () => {
+      if (Capacitor.isNativePlatform()) {
+        const status = await LocalNotifications.checkPermissions();
+        setPermission(status.display === 'granted' ? 'granted' : 'default');
+      } else if ('Notification' in window) {
+        setPermission(Notification.permission);
+      }
+    };
+    checkPermission();
   }, []);
 
   const requestPermission = async () => {
-    if (!('Notification' in window)) return;
-    const result = await Notification.requestPermission();
-    setPermission(result);
+    if (Capacitor.isNativePlatform()) {
+      try {
+        const result = await LocalNotifications.requestPermissions();
+        setPermission(result.display === 'granted' ? 'granted' : 'denied');
+      } catch (error) {
+        console.error("Error requesting local notifications permission", error);
+      }
+    } else if ('Notification' in window) {
+      const result = await Notification.requestPermission();
+      setPermission(result);
+    }
   };
 
   useEffect(() => {
@@ -42,7 +58,20 @@ export default function NotificationManager() {
           
           if (data.userId !== user.uid && createdAt > sessionStartTime - 5000) {
             // Actual System/Mobile Notification
-            if (Notification.permission === 'granted') {
+            if (Capacitor.isNativePlatform()) {
+              LocalNotifications.schedule({
+                notifications: [
+                  {
+                    title: 'Kudumbam',
+                    body: data.message,
+                    id: Math.floor(Math.random() * 10000),
+                    smallIcon: 'ic_stat_name', // Should be configured in android assets if possible
+                    actionTypeId: '',
+                    extra: null
+                  }
+                ]
+              });
+            } else if (Notification.permission === 'granted') {
               new Notification('Kudumbam', {
                 body: data.message,
                 icon: '/favicon.ico',

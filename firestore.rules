@@ -62,9 +62,7 @@ service cloud.firestore {
 
     match /groceries/{groceryId} {
       allow get, list: if isSignedIn();
-      allow create: if isSignedIn();
-      allow update: if isSignedIn();
-      allow delete: if isAdmin();
+      allow create, update, delete: if isSignedIn();
     }
 
     match /reimbursements/{reimbursementId} {
@@ -110,8 +108,7 @@ service cloud.firestore {
 
     match /dining/{id} {
       allow get, list: if isSignedIn();
-      allow create, update: if isSignedIn();
-      allow delete: if isAdmin();
+      allow create, update, delete: if isSignedIn();
     }
 
     match /notifications/{id} {
@@ -131,6 +128,10 @@ service cloud.firestore {
     match /metadata/dashboard {
       allow read: if isSignedIn();
       allow write: if isAdmin();
+    }
+
+    match /milk_log/{id} {
+      allow read, write: if isSignedIn();
     }
   }
 }

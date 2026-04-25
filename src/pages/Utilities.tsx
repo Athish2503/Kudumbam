@@ -1,32 +1,57 @@
 import React, { useState, useEffect } from 'react';
-import { doc, onSnapshot, setDoc, updateDoc } from 'firebase/firestore';
+import { 
+  doc, 
+  onSnapshot, 
+  setDoc, 
+  collection, 
+  query, 
+  where, 
+  orderBy, 
+  getDocs,
+  limit 
+} from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { 
-  Milk, 
+  Milk as MilkIcon, 
   Flame, 
-  Calendar, 
+  Calendar as CalendarIcon, 
   Plus, 
   Minus, 
   AlertTriangle,
   History,
   CheckCircle2,
-  Bell
+  Bell,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useToast } from '../context/ToastContext';
 import { sendNotification } from '../components/NotificationManager';
 import { useAuth } from '../App';
+import { 
+  format, 
+  startOfMonth, 
+  endOfMonth, 
+  eachDayOfInterval, 
+  isSameDay, 
+  addMonths, 
+  subMonths,
+  isToday,
+  parseISO
+} from 'date-fns';
 
 export default function Utilities() {
   const { user, userData } = useAuth();
   const [milkData, setMilkData] = useState({ delivered: false, extra: 0, lastUpdated: '' });
   const [gasData, setGasData] = useState({ lastBooked: '', estimatedDays: 45, status: 'running' });
+  const [milkLog, setMilkLog] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [viewDate, setViewDate] = useState(new Date());
   const { showToast } = useToast();
 
   useEffect(() => {
     // Listen to Utilities metadata
-    const unsub = onSnapshot(doc(db, 'metadata', 'utilities'), (docSnap) => {
+    const unsubMetadata = onSnapshot(doc(db, 'metadata', 'utilities'), (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data();
         setMilkData(data.milk || { delivered: false, extra: 0, lastUpdated: '' });
@@ -34,8 +59,27 @@ export default function Utilities() {
       }
       setLoading(false);
     });
-    return () => unsub();
-  }, []);
+
+    // Listen to Milk Logs for current month
+    const start = startOfMonth(viewDate);
+    const end = endOfMonth(viewDate);
+    
+    const milkQuery = query(
+      collection(db, 'milk_log'),
+      where('date', '>=', format(start, 'yyyy-MM-dd')),
+      where('date', '<=', format(end, 'yyyy-MM-dd')),
+      orderBy('date', 'asc')
+    );
+
+    const unsubLogs = onSnapshot(milkQuery, (snapshot) => {
+      setMilkLog(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    });
+
+    return () => {
+      unsubMetadata();
+      unsubLogs();
+    };
+  }, [viewDate]);
 
   // Reset milk daily if needed (simple check)
   useEffect(() => {
@@ -56,29 +100,59 @@ export default function Utilities() {
 
   const toggleMilk = async () => {
     const newStatus = !milkData.delivered;
+    const todayStr = format(new Date(), 'yyyy-MM-dd');
+    
     try {
+      // Update real-time metadata
       await setDoc(doc(db, 'metadata', 'utilities'), { 
         milk: {
           delivered: newStatus,
           lastUpdated: new Date().toISOString()
         }
       }, { merge: true });
+
+      // Update log collection
       if (newStatus) {
+        await setDoc(doc(db, 'milk_log', todayStr), {
+          date: todayStr,
+          delivered: true,
+          extra: milkData.extra,
+          timestamp: new Date().toISOString(),
+          userId: user?.uid
+        });
         showToast("Milk delivery recorded!");
         const author = userData?.nickname || user?.displayName || 'Someone';
         sendNotification(user?.uid || '', author, "Confirmed milk delivery for today.");
+      } else {
+        // If unchecking, we can either delete or set to false. 
+        // For simplicity, we'll just keep it but set to false if needed.
+        // Actually, usually users don't uncheck unless it was a mistake.
+        await setDoc(doc(db, 'milk_log', todayStr), {
+          delivered: false
+        }, { merge: true });
       }
     } catch (e) {
       console.error(e);
+      showToast("Failed to update milk status", "error");
     }
   };
 
   const updateExtraMilk = async (val: number) => {
+    const newVal = Math.max(0, milkData.extra + val);
+    const todayStr = format(new Date(), 'yyyy-MM-dd');
+
     await setDoc(doc(db, 'metadata', 'utilities'), { 
       milk: {
-        extra: Math.max(0, milkData.extra + val)
+        extra: newVal
       }
     }, { merge: true });
+
+    // If already delivered today, update the log too
+    if (milkData.delivered) {
+      await setDoc(doc(db, 'milk_log', todayStr), {
+        extra: newVal
+      }, { merge: true });
+    }
   };
 
   const bookGas = async () => {
@@ -129,26 +203,32 @@ export default function Utilities() {
   const remaining = calculateGasRemaining();
   const gasPercent = (remaining / gasData.estimatedDays) * 100;
 
+  // Calendar logic
+  const daysInMonth = eachDayOfInterval({
+    start: startOfMonth(viewDate),
+    end: endOfMonth(viewDate)
+  });
+
   return (
     <div className="space-y-12 pb-20">
       <header>
         <p className="text-[11px] uppercase tracking-[0.3em] font-bold opacity-40 mb-2">Daily Essentials</p>
         <h1 className="text-5xl font-serif italic font-black leading-none tracking-tighter text-[#1A1A1A]">
-          Utilities.
+          Essential.
         </h1>
       </header>
 
-      <div className="grid grid-cols-1 gap-10">
-        {/* Milk Tracker */}
-        <section className="bg-white p-8 rounded-[40px] border border-[#2D2926]/5 shadow-sm space-y-8">
+      <div className="grid grid-cols-1 gap-12">
+        {/* Milk Tracker Card */}
+        <section className="bg-white p-8 rounded-[40px] border border-[#2D2926]/5 shadow-sm space-y-10">
            <div className="flex items-center justify-between">
               <div className="flex items-center gap-4">
                  <div className="w-12 h-12 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center">
-                    <Milk size={24} />
+                    <MilkIcon size={24} />
                  </div>
                  <div>
                     <h2 className="text-xl font-serif italic font-bold">Milk Tracker</h2>
-                    <p className="text-[9px] uppercase tracking-widest font-black opacity-30 italic">Daily Delivery</p>
+                    <p className="text-[9px] uppercase tracking-widest font-black opacity-30 italic">Daily Packet Check</p>
                  </div>
               </div>
               <div className={`px-4 py-1.5 rounded-full text-[8px] uppercase tracking-widest font-black ${milkData.delivered ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600 animate-pulse'}`}>
@@ -159,30 +239,89 @@ export default function Utilities() {
            <div className="flex flex-col items-center justify-center py-6 gap-6">
               <button 
                 onClick={toggleMilk}
-                className={`w-32 h-32 rounded-full border-4 transition-all flex flex-col items-center justify-center gap-2 ${
+                className={`w-36 h-36 rounded-full border-4 transition-all flex flex-col items-center justify-center gap-3 active:scale-95 ${
                    milkData.delivered 
                    ? 'bg-emerald-500 border-emerald-100 text-white shadow-xl shadow-emerald-500/20' 
                    : 'bg-white border-[#2D2926]/5 text-[#2D2926]/10 hover:border-emerald-200 hover:text-emerald-500'
                 }`}
               >
-                 <CheckCircle2 size={40} />
-                 <span className="text-[9px] uppercase font-black tracking-tighter">{milkData.delivered ? 'Done' : 'Tap to Confirm'}</span>
+                 <CheckCircle2 size={48} />
+                 <span className="text-[10px] uppercase font-black tracking-widest">{milkData.delivered ? 'Brought' : 'Mark Brought'}</span>
               </button>
            </div>
 
            <div className="pt-8 border-t border-[#2D2926]/5 flex items-center justify-between">
               <div>
                  <p className="text-[10px] uppercase tracking-widest font-black opacity-30 mb-1">Extra Packets</p>
-                 <p className="text-2xl font-serif italic font-bold">+{milkData.extra}</p>
+                 <p className="text-3xl font-serif italic font-black">+{milkData.extra}</p>
               </div>
-              <div className="flex bg-[#FDFBF7] rounded-2xl border border-[#2D2926]/5 p-2">
-                 <button onClick={() => updateExtraMilk(-1)} className="w-12 h-12 flex items-center justify-center hover:bg-white rounded-xl transition-all"><Minus size={18} /></button>
-                 <button onClick={() => updateExtraMilk(1)} className="w-12 h-12 flex items-center justify-center hover:bg-white rounded-xl transition-all"><Plus size={18} /></button>
+              <div className="flex bg-[#FDFBF7] rounded-2xl border border-[#2D2926]/5 p-2 shadow-inner">
+                 <button onClick={() => updateExtraMilk(-1)} className="w-12 h-12 flex items-center justify-center hover:bg-white rounded-xl transition-all shadow-sm"><Minus size={18} /></button>
+                 <button onClick={() => updateExtraMilk(1)} className="w-12 h-12 flex items-center justify-center hover:bg-white rounded-xl transition-all shadow-sm"><Plus size={18} /></button>
               </div>
            </div>
         </section>
 
-        {/* Gas Tracker */}
+        {/* Milk Calendar View */}
+        <section className="bg-[#F5F1EA] p-8 rounded-[40px] space-y-8">
+           <div className="flex items-center justify-between px-2">
+              <div className="flex items-center gap-3">
+                 <CalendarIcon size={20} className="opacity-20" />
+                 <h2 className="text-xs uppercase tracking-[0.2em] font-black opacity-60">Delivery History</h2>
+              </div>
+              <div className="flex items-center gap-4">
+                 <button onClick={() => setViewDate(subMonths(viewDate, 1))} className="p-1 opacity-20 hover:opacity-100 transition-opacity"><ChevronLeft size={20} /></button>
+                 <span className="text-[10px] uppercase font-black tracking-widest min-w-[80px] text-center">{format(viewDate, 'MMM yyyy')}</span>
+                 <button onClick={() => setViewDate(addMonths(viewDate, 1))} className="p-1 opacity-20 hover:opacity-100 transition-opacity"><ChevronRight size={20} /></button>
+              </div>
+           </div>
+
+           <div className="grid grid-cols-7 gap-2">
+              {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((day, i) => (
+                <div key={i} className="text-[8px] font-black text-center opacity-20 py-2">{day}</div>
+              ))}
+              {daysInMonth.map((day) => {
+                const log = milkLog.find(l => l.date === format(day, 'yyyy-MM-dd'));
+                const isDelivered = log?.delivered;
+                const extra = log?.extra || 0;
+
+                return (
+                  <div 
+                    key={day.toISOString()} 
+                    className={`aspect-square rounded-xl flex flex-col items-center justify-center relative transition-all border ${
+                      isDelivered 
+                        ? 'bg-emerald-500 border-emerald-400 text-white shadow-md shadow-emerald-500/10' 
+                        : isToday(day)
+                          ? 'bg-white border-[#2D2926]/10 text-[#2D2926]'
+                          : 'bg-white/30 border-transparent text-[#2D2926]/20'
+                    }`}
+                  >
+                    <span className={`text-[10px] font-bold ${isToday(day) && !isDelivered ? 'underline decoration-2' : ''}`}>
+                       {format(day, 'd')}
+                    </span>
+                    {extra > 0 && (
+                      <span className={`text-[7px] font-black absolute bottom-1 ${isDelivered ? 'text-white' : 'text-blue-500'}`}>
+                        +{extra}
+                      </span>
+                    )}
+                  </div>
+                );
+              })}
+           </div>
+
+           <div className="pt-6 flex justify-center gap-6 opacity-40">
+              <div className="flex items-center gap-2">
+                 <div className="w-2 h-2 rounded-full bg-emerald-500"></div>
+                 <span className="text-[8px] uppercase font-black tracking-widest">Brought</span>
+              </div>
+              <div className="flex items-center gap-2">
+                 <div className="w-2 h-2 rounded-full bg-white border border-[#2D2926]/10"></div>
+                 <span className="text-[8px] uppercase font-black tracking-widest">Pending</span>
+              </div>
+           </div>
+        </section>
+
+        {/* Gas Tracker Section */}
         <section className="bg-[#1A1A1A] p-8 rounded-[40px] shadow-2xl space-y-10 relative overflow-hidden">
            <div className="flex items-center justify-between relative z-10">
               <div className="flex items-center gap-4 text-white">
@@ -191,7 +330,7 @@ export default function Utilities() {
                  </div>
                  <div>
                     <h2 className="text-xl font-serif italic font-bold">LPG Cylinder</h2>
-                    <p className="text-[9px] uppercase tracking-widest font-black opacity-30 italic">Usage Estimate</p>
+                    <p className="text-[9px] uppercase tracking-widest font-black opacity-30 italic">Fuel Management</p>
                  </div>
               </div>
               <div className="flex items-center gap-3">
@@ -203,66 +342,37 @@ export default function Utilities() {
                  }`}>
                     {gasData.status}
                  </div>
-                 
-                 {gasData.status === 'empty' && (
-                   <button 
-                     onClick={bookGas}
-                     className="bg-orange-500 text-white px-6 py-3 rounded-full text-[9px] font-black uppercase tracking-widest shadow-xl shadow-orange-500/20 active:scale-95 transition-all"
-                   >
-                      Book Now
-                   </button>
-                 )}
-                 {gasData.status === 'booked' && (
-                   <button 
-                     onClick={deliverGas}
-                     className="bg-blue-500 text-white px-6 py-3 rounded-full text-[9px] font-black uppercase tracking-widest shadow-xl shadow-blue-500/20 active:scale-95 transition-all"
-                   >
-                      Confirm Delivery
-                   </button>
-                 )}
-                 {gasData.status === 'delivered' && (
-                   <button 
-                     onClick={startUsingGas}
-                     className="bg-emerald-500 text-white px-6 py-3 rounded-full text-[9px] font-black uppercase tracking-widest shadow-xl shadow-emerald-500/20 active:scale-95 transition-all"
-                   >
-                      Start Using
-                   </button>
-                 )}
-                 {gasData.status === 'running' && remaining < 5 && (
-                   <button 
-                     onClick={bookGas}
-                     className="bg-rose-500 text-white px-6 py-3 rounded-full text-[9px] font-black uppercase tracking-widest shadow-xl shadow-rose-500/20 animate-pulse"
-                   >
-                      Book Next
-                   </button>
-                 )}
               </div>
            </div>
 
            <div className="space-y-4 relative z-10">
               <div className="flex items-end justify-between text-white px-2">
                  <div>
-                    <p className="text-[9px] uppercase tracking-widest font-black opacity-30 mb-1">Status: {gasData.status}</p>
+                    <p className="text-[9px] uppercase tracking-widest font-black opacity-30 mb-1">Estimated Remaining</p>
                     {gasData.status === 'running' ? (
                       <p className={`text-5xl font-serif italic font-black ${remaining < 10 ? 'text-rose-500' : 'text-emerald-400'}`}>
-                         {remaining} <span className="text-sm font-sans not-italic opacity-30">Days Left</span>
+                         {remaining} <span className="text-sm font-sans not-italic opacity-30">Days</span>
                       </p>
                     ) : (
                       <p className="text-2xl font-serif italic font-bold opacity-60">
-                        {gasData.status === 'booked' ? 'Waiting for Delivery...' : 
-                         gasData.status === 'delivered' ? 'Cylinder is Ready!' : 'Cylinder is Empty'}
+                        {gasData.status === 'booked' ? 'Cylinder Booked' : 
+                         gasData.status === 'delivered' ? 'Ready to Install' : 'Empty'}
                       </p>
                     )}
                  </div>
-                 <div className="text-right">
-                    <p className="text-[9px] uppercase tracking-widest font-black opacity-30 mb-1">
-                       {gasData.status === 'running' ? 'Started On' : 'Booked On'}
-                    </p>
-                    <p className="text-xs font-bold">
-                       {gasData.status === 'running' 
-                        ? (gasData.startedDate ? new Date(gasData.startedDate).toLocaleDateString() : 'N/A')
-                        : (gasData.lastBooked ? new Date(gasData.lastBooked).toLocaleDateString() : 'No record')}
-                    </p>
+                 <div className="flex flex-col items-end gap-3">
+                   {gasData.status === 'empty' && (
+                     <button onClick={bookGas} className="bg-orange-500 text-white px-6 py-3 rounded-full text-[9px] font-black uppercase tracking-widest shadow-xl shadow-orange-500/20 active:scale-95 transition-all">Book Now</button>
+                   )}
+                   {gasData.status === 'booked' && (
+                     <button onClick={deliverGas} className="bg-blue-500 text-white px-6 py-3 rounded-full text-[9px] font-black uppercase tracking-widest shadow-xl shadow-blue-500/20 active:scale-95 transition-all">Confirm Delivery</button>
+                   )}
+                   {gasData.status === 'delivered' && (
+                     <button onClick={startUsingGas} className="bg-emerald-500 text-white px-6 py-3 rounded-full text-[9px] font-black uppercase tracking-widest shadow-xl shadow-emerald-500/20 active:scale-95 transition-all">Start Usage</button>
+                   )}
+                   {gasData.status === 'running' && remaining < 7 && (
+                     <button onClick={bookGas} className="bg-rose-500 text-white px-6 py-3 rounded-full text-[9px] font-black uppercase tracking-widest animate-pulse">Book Next</button>
+                   )}
                  </div>
               </div>
 
@@ -276,13 +386,6 @@ export default function Utilities() {
                 </div>
               )}
            </div>
-
-           {remaining < 10 && (
-             <div className="flex items-center gap-3 p-4 bg-rose-500/10 border border-rose-500/20 rounded-2xl relative z-10">
-                <AlertTriangle className="text-rose-500" size={18} />
-                <p className="text-white/60 text-[9px] uppercase tracking-widest font-bold">Low Gas Alert: Order soon to avoid "Mid-Sambar" crisis!</p>
-             </div>
-           )}
 
            <Flame size={180} className="absolute -right-10 -bottom-10 text-white/5 rotate-12" />
         </section>
